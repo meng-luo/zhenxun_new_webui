@@ -3,7 +3,7 @@
  */
 
 import { api } from './client'
-import type { BotStatus, APIResponse } from '@/types/api-next.types'
+import type { BotStatus, BotStatusListData, APIResponse } from '@/types/api-next.types'
 
 export const mainApi = {
     /**
@@ -11,6 +11,13 @@ export const mainApi = {
      */
     getBotStatus(botId?: string): Promise<APIResponse<BotStatus>> {
         return api.get<BotStatus>('/main/bot-status', { bot_id: botId })
+    },
+
+    /**
+     * 获取 Bot 状态列表
+     */
+    getBotStatusList(botId?: string): Promise<APIResponse<BotStatusListData>> {
+        return api.get<BotStatusListData>('/main/bot-status/list', { bot_id: botId })
     },
 
     /**

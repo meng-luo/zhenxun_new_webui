@@ -11,6 +11,16 @@ export interface BotStatus extends ApiBotStatus {
     name?: string
 }
 
+function normalizeBot(bot: ApiBotStatus): BotStatus {
+    return {
+        ...bot,
+        bot_id: bot.self_id ?? undefined,
+        id: bot.self_id ?? undefined,
+        name: bot.nickname ?? bot.self_id ?? undefined,
+        is_online: bot.is_running,
+    }
+}
+
 export const useBotStore = defineStore('bot', () => {
     // 机器人列表
     const botList = ref<BotStatus[]>([])
@@ -44,16 +54,38 @@ export const useBotStore = defineStore('bot', () => {
      */
     async function getBotList() {
         try {
-            const res = await mainApi.getBotStatus()
+            const res = await mainApi.getBotStatusList(selectedBotId.value || undefined)
             if (res?.success && res?.data) {
                 console.log('获取机器人列表成功：', res)
-                // 直接存入数组
-                botList.value = [res.data]
+                botList.value = (res.data.bots || []).map(normalizeBot)
+
+                const currentBot = res.data.current ? normalizeBot(res.data.current) : null
+                if (currentBot) {
+                    isOnline.value = currentBot.is_running
+                    botUptime.value = currentBot.uptime
+                    botUptimeFormatted.value = currentBot.uptime_formatted
+
+                    if (
+                        selectedBotId.value
+                        && !botList.value.some(bot => bot.self_id === selectedBotId.value)
+                    ) {
+                        selectedBotId.value = currentBot.self_id
+                    }
+                } else if (botList.value.length === 0) {
+                    isOnline.value = false
+                    botUptime.value = 0
+                    botUptimeFormatted.value = ''
+                    selectedBotId.value = null
+                }
             } else {
                 console.warn('获取机器人列表失败或返回数据无效：', res)
+                botList.value = []
+                isOnline.value = false
             }
         } catch (err) {
             console.error('获取机器人列表时发生错误：', err)
+            botList.value = []
+            isOnline.value = false
         }
     }
 

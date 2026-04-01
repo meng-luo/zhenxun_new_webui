@@ -68,6 +68,12 @@ export interface BotStatus {
     start_time: string
 }
 
+export interface BotStatusListData {
+    current: BotStatus | null
+    bots: BotStatus[]
+    total: number
+}
+
 export interface SystemInfo {
     version: string
     system: string
