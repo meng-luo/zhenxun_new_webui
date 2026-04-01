@@ -1,11 +1,11 @@
 """主页服务"""
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from zhenxun.models.chat_history import ChatHistory
 from zhenxun.models.group_console import GroupConsole
 from zhenxun.models.statistics import Statistics
 
-from ..models.system import BotStatus
+from ..models.system import BotStatus, BotStatusListData
 from ..utils.formatters import format_uptime
 
 
@@ -13,63 +13,111 @@ class MainService:
     """主页服务"""
 
     @staticmethod
-    async def get_bot_status() -> BotStatus:
-        """获取 Bot 状态"""
-        import nonebot
+    def _normalize_datetime(value: datetime | None) -> datetime:
+        """统一时间对象时区，避免 aware/naive 混用"""
+        if value is None:
+            return datetime.now()
+        if value.tzinfo is None:
+            return value
+        return value.astimezone().replace(tzinfo=None)
 
-        bots = nonebot.get_bots()
-        is_running = len(bots) > 0
-
-        # 获取 Bot 信息
-        self_id: str | None = None
-        nickname: str | None = None
-        ava_url: str | None = None
-
-        if bots:
-            bot = list(bots.values())[0]
-            self_id = getattr(bot, "self_id", None)
-            try:
-                bot_info = await bot.get_login_info()
-                nickname = bot_info.get("nickname")
-                ava_url = bot_info.get("face_url")
-            except Exception:
-                pass
-
-            # 如果没有头像 URL，使用 QQ 头像默认地址
-            if not ava_url and self_id:
-                ava_url = f"http://q1.qlogo.cn/g?b=qq&nk={self_id}&s=640"
-
-        # 获取运行时长
-        uptime = 0
-        start_time = datetime.now()
+    @staticmethod
+    async def _get_latest_connect_times() -> dict[str, datetime]:
+        """获取每个 Bot 最近连接时间"""
         try:
             from zhenxun.models.bot_connect_log import BotConnectLog
 
-            latest_connect = await BotConnectLog.filter(type=1).order_by("-connect_time").first()
-            if latest_connect and latest_connect.connect_time:
-                start_time = latest_connect.connect_time
-                uptime = int((datetime.now() - start_time).total_seconds())
+            logs = await BotConnectLog.filter(type=1).order_by("-connect_time").all()
+            latest_connects: dict[str, datetime] = {}
+            for log in logs:
+                bot_id = str(log.bot_id)
+                if bot_id not in latest_connects and log.connect_time:
+                    latest_connects[bot_id] = log.connect_time
+            return latest_connects
+        except Exception:
+            return {}
+
+    @staticmethod
+    async def _build_bot_status(bot, latest_connects: dict[str, datetime], group_count: int) -> BotStatus:
+        """构建单个 Bot 状态"""
+        self_id = getattr(bot, "self_id", None)
+        nickname: str | None = None
+        ava_url: str | None = None
+
+        try:
+            bot_info = await bot.get_login_info()
+            nickname = bot_info.get("nickname")
+            ava_url = bot_info.get("face_url")
         except Exception:
             pass
 
-        # 获取群组和好友数量
-        group_count = 0
-        try:
-            group_count = await GroupConsole.all().count()
-        except Exception:
-            pass
+        if not ava_url and self_id:
+            ava_url = f"http://q1.qlogo.cn/g?b=qq&nk={self_id}&s=640"
+
+        start_time = MainService._normalize_datetime(
+            latest_connects.get(str(self_id), datetime.now(timezone.utc))
+        )
+        uptime = int((datetime.now() - start_time).total_seconds())
 
         return BotStatus(
-            self_id=self_id,
+            self_id=str(self_id) if self_id is not None else None,
             nickname=nickname,
             ava_url=ava_url,
-            is_running=is_running,
+            is_running=True,
             uptime=uptime,
             uptime_formatted=format_uptime(uptime),
             group_count=group_count,
             friend_count=0,
             message_count=0,
             start_time=start_time,
+        )
+
+    @staticmethod
+    async def get_bot_status_list(bot_id: str | None = None) -> BotStatusListData:
+        """获取 Bot 状态列表"""
+        import nonebot
+
+        bots = nonebot.get_bots()
+        latest_connects = await MainService._get_latest_connect_times()
+
+        group_count = 0
+        try:
+            group_count = await GroupConsole.all().count()
+        except Exception:
+            pass
+
+        bot_statuses: list[BotStatus] = []
+        for bot in bots.values():
+            bot_statuses.append(
+                await MainService._build_bot_status(bot, latest_connects, group_count)
+            )
+
+        current = None
+        if bot_id:
+            current = next((item for item in bot_statuses if item.self_id == str(bot_id)), None)
+        if current is None and bot_statuses:
+            current = bot_statuses[0]
+
+        return BotStatusListData(current=current, bots=bot_statuses, total=len(bot_statuses))
+
+    @staticmethod
+    async def get_bot_status(bot_id: str | None = None) -> BotStatus:
+        """获取 Bot 状态"""
+        bot_status_list = await MainService.get_bot_status_list(bot_id)
+        if bot_status_list.current:
+            return bot_status_list.current
+
+        return BotStatus(
+            self_id=None,
+            nickname=None,
+            ava_url=None,
+            is_running=False,
+            uptime=0,
+            uptime_formatted=format_uptime(0),
+            group_count=0,
+            friend_count=0,
+            message_count=0,
+            start_time=datetime.now(),
         )
 
     @staticmethod

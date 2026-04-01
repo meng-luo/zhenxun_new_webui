@@ -43,6 +43,13 @@ class BotStatus(BaseModel):
     start_time: datetime = Field(..., description="启动时间")
 
 
+class BotStatusListData(BaseModel):
+    """Bot 状态列表"""
+    current: BotStatus | None = Field(None, description="当前选中的 Bot 状态")
+    bots: list[BotStatus] = Field(default_factory=list, description="Bot 状态列表")
+    total: int = Field(..., description="Bot 总数")
+
+
 class Friend(BaseModel):
     """好友信息"""
     user_id: str = Field(..., description="用户 ID")

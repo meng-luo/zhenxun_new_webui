@@ -4,7 +4,7 @@ from fastapi.responses import JSONResponse
 
 from ..dependencies import AuthenticatedUser
 from ..exceptions import APIException
-from ..models.system import BotStatus
+from ..models.system import BotStatus, BotStatusListData
 from ..responses import APIResponse, success_response
 from ..services.main_service import MainService
 
@@ -17,19 +17,40 @@ router = APIRouter(prefix="/main", tags=["主页"])
     response_class=JSONResponse,
     summary="获取 Bot 状态",
 )
-async def get_bot_status(user: AuthenticatedUser) -> APIResponse[BotStatus]:
+async def get_bot_status(
+    user: AuthenticatedUser, bot_id: str | None = None
+) -> APIResponse[BotStatus]:
     """获取 Bot 运行状态
 
     Returns:
         APIResponse[BotStatus]: Bot 状态
     """
     try:
-        result = await MainService.get_bot_status()
+        result = await MainService.get_bot_status(bot_id)
         return success_response(data=result)
     except APIException:
         raise
     except Exception as e:
         raise APIException(f"获取 Bot 状态失败：{e!s}", code=500)
+
+
+@router.get(
+    "/bot-status/list",
+    response_model=APIResponse[BotStatusListData],
+    response_class=JSONResponse,
+    summary="获取 Bot 状态列表",
+)
+async def get_bot_status_list(
+    user: AuthenticatedUser, bot_id: str | None = None
+) -> APIResponse[BotStatusListData]:
+    """获取 Bot 状态列表"""
+    try:
+        result = await MainService.get_bot_status_list(bot_id)
+        return success_response(data=result)
+    except APIException:
+        raise
+    except Exception as e:
+        raise APIException(f"获取 Bot 状态列表失败：{e!s}", code=500)
 
 
 @router.get(
